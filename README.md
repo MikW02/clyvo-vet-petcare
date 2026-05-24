@@ -1,70 +1,101 @@
 # Clyvo-vet — PetCare API
 
-API REST de gerenciamento de pets (cadastro de animais, espécies, donos) para a
-**Clyvo-vet**. Stack Spring Boot 3 + Java 17 + Oracle Database, empacotada em
-contêineres Docker, com script Azure CLI para subir tudo numa VM Linux.
+API REST de cadastro de pets (espécie, raça, idade, dono) para a clínica
+**Clyvo-vet**. Stack Spring Boot 3 + Java 17 + Oracle XE 21, tudo em Docker,
+com script Azure CLI que provisiona VM Linux e sobe a stack remota.
 
-> Repositório do zero, sem dependência de outros projetos.
+Repo: <https://github.com/MikW02/clyvo-vet-petcare>
 
 ---
 
-## 1. Arquitetura
+## Arquitetura
 
-![Diagrama de arquitetura](docs/arquitetura.drawio)
+![Arquitetura](docs/arquitetura.png)
 
-Abra `docs/arquitetura.drawio` em [diagrams.net](https://app.diagrams.net) para
-ver/editar. O fluxo é:
+Fonte editável: `docs/arquitetura.drawio` (abre em <https://app.diagrams.net>).
+
+Fluxo:
 
 ```
-Usuário ──HTTP:8080──▶ Public IP ─▶ NSG ─▶ VM Linux
+Usuário ──HTTP:8080──▶ Public IP ─▶ NSG ─▶ VM Linux (Ubuntu 22.04)
                                             └─ docker network "clyvo-net"
-                                               ├─ clyvo-petcare  (Spring Boot, non-root)
-                                               └─ clyvo-oracle   (Oracle Free) ──▶ volume nomeado
-                                                                                    clyvo-oracle-data
+                                               ├─ clyvo-petcare  (Spring Boot, USER clyvo, non-root)
+                                               └─ clyvo-oracle   (Oracle XE 21) ──▶ volume "clyvo-oracle-data"
 ```
 
-- **API → DB:** JDBC em `clyvo-oracle:1521/XEPDB1` pela rede Docker interna.
+- **API → DB:** JDBC interno em `clyvo-oracle:1521/XEPDB1` (não passa pela rede da VM).
 - **Externo → API:** porta `8080` aberta no NSG.
-- **Externo → DB:** porta `1521` opcionalmente aberta (útil para SQL Developer).
+- **Externo → DB:** porta `1521` aberta **só pro IP de quem rodou o deploy** (override `OPEN_DB=all` se quiser liberar).
 
 ---
 
-## 2. Estrutura do repositório
+## Mapeamento da rubrica
+
+| Item                                            | Pts | Onde está atendido                                                         |
+|-------------------------------------------------|-----|----------------------------------------------------------------------------|
+| **Infra com Azure CLI**                         | 20  |                                                                            |
+| ↳ Criar VM Linux                                |     | `scripts/azure-deploy.sh` linha do `az vm create` (Ubuntu 22.04 / B2s)     |
+| ↳ Abrir portas necessárias                      |     | `az network nsg rule create` (22 default + 8080 app + 1521 DB)             |
+| ↳ Instalar Docker                               |     | cloud-init no script (`docker-ce` via apt)                                 |
+| ↳ Instalar ferramentas (git, nano, etc.)        |     | cloud-init: `packages: [git, nano, curl, ca-certificates, gnupg, jq]`      |
+| **App + DB no Docker rodando na nuvem**         | 60  |                                                                            |
+| ↳ Subir App + Banco em containers               |     | dois `docker run` no fim do `azure-deploy.sh`                              |
+| ↳ Rodar em background (`-d`)                    |     | flag `-d` nos dois `docker run`                                            |
+| ↳ Usuário sem ser root                          |     | `app/Dockerfile`: `groupadd --system clyvo` + `USER clyvo`                 |
+| ↳ Volume nomeado                                |     | `-v clyvo-oracle-data:/opt/oracle/oradata` no run do Oracle                |
+| ↳ Testar externamente (fora da VM)              |     | seção [Testes externos](#testes-externos) abaixo + screenshots em `docs/`  |
+| **Arquitetura draw.io**                         | 20  | `docs/arquitetura.drawio` + PNG renderizado `docs/arquitetura.png`         |
+
+---
+
+## Estrutura do repositório
 
 ```
 challenge052026/
-├── app/                      # Aplicação Spring Boot
-│   ├── src/main/java/com/clyvovet/petcare/...
+├── app/                              # Aplicação Spring Boot 3 / Java 17
+│   ├── src/main/java/com/clyvovet/petcare/
+│   │   ├── PetcareApplication.java
+│   │   ├── model/Pet.java            # entidade JPA
+│   │   ├── repository/PetRepository.java
+│   │   ├── controller/PetController.java   # CRUD + documentação OpenAPI
+│   │   ├── controller/HealthController.java
+│   │   └── config/DataSeeder.java    # seed automático de 5 pets no startup
 │   ├── src/main/resources/application.properties
 │   ├── pom.xml
-│   └── Dockerfile            # multi-stage, roda como usuário 'clyvo' (uid 999)
+│   └── Dockerfile                    # multi-stage, USER clyvo (não-root)
 ├── oracle/
-│   ├── Dockerfile            # Oracle Free + init SQL (sem docker-compose)
-│   └── init/01_schema.sql
+│   ├── Dockerfile                    # gvenzl/oracle-xe:21-slim-faststart
+│   └── init/01_schema.sql            # cria tabela PETS (idempotente)
 ├── scripts/
-│   ├── run-local.sh / .ps1   # sobe a stack local com `docker` puro
+│   ├── run-local.sh / .ps1           # sobe stack local com docker puro
 │   ├── stop-local.sh
-│   ├── azure-deploy.sh       # provisiona VM + sobe containers
-│   └── azure-destroy.sh      # apaga TUDO no Azure
-├── docs/arquitetura.drawio
+│   ├── azure-deploy.sh               # provisiona VM + sobe containers
+│   └── azure-destroy.sh              # apaga TUDO no Azure
+├── docs/
+│   ├── arquitetura.drawio
+│   └── arquitetura.png
 └── README.md
 ```
 
 ---
 
-## 3. Endpoints
+## Endpoints
 
 Base URL: `http://<host>:8080`
 
-| Método | Path                  | Descrição                          |
-|--------|-----------------------|------------------------------------|
-| GET    | `/`                   | Health / banner                    |
-| GET    | `/api/pets`           | Lista todos os pets                |
-| GET    | `/api/pets?species=dog` | Filtra por espécie               |
-| GET    | `/api/pets/{id}`      | Busca um pet                       |
-| POST   | `/api/pets`           | Cadastra um pet                    |
-| PUT    | `/api/pets/{id}`      | Atualiza um pet                    |
-| DELETE | `/api/pets/{id}`      | Remove um pet                      |
+| Método | Path                      | Status        | Descrição                            |
+|--------|---------------------------|---------------|--------------------------------------|
+| GET    | `/`                       | 200           | Banner JSON (liveness)               |
+| GET    | `/api/pets`               | 200           | Lista todos                          |
+| GET    | `/api/pets?species=dog`   | 200           | Filtra por espécie (case-insensitive)|
+| GET    | `/api/pets/{id}`          | 200 / 404     | Busca por id                         |
+| POST   | `/api/pets`               | 201 / 400     | Cadastra                             |
+| PUT    | `/api/pets/{id}`          | 200 / 400 / 404 | Atualiza                            |
+| DELETE | `/api/pets/{id}`          | 204 / 404     | Remove                               |
+
+**Swagger UI:** http://`<host>`:8080/swagger-ui.html — documentação interativa de todos os endpoints com botão "Try it out".
+
+**OpenAPI spec:** http://`<host>`:8080/v3/api-docs
 
 Exemplo de payload:
 
@@ -78,12 +109,18 @@ Exemplo de payload:
 }
 ```
 
+Significado dos status codes:
+
+- `201 Created` → POST criou; vem com header `Location: /api/pets/{id}`
+- `204 No Content` → DELETE deu certo; corpo vazio
+- `400 Bad Request` → payload falhou validação (nome em branco, idade negativa, etc.)
+- `404 Not Found` → id inexistente
+
 ---
 
-## 4. Setup local (Docker)
+## Setup local (Docker)
 
-**Pré-requisitos:** Docker Desktop em execução. ~4 GB de RAM livres (Oracle é
-faminto).
+**Pré-req:** Docker Desktop rodando, ~4 GB RAM livres.
 
 ### Linux / macOS / WSL
 
@@ -100,45 +137,43 @@ powershell -ExecutionPolicy Bypass -File scripts\run-local.ps1
 
 O script:
 
-1. Cria a network `clyvo-net` e o volume nomeado `clyvo-oracle-data` (idempotente).
-2. Builda `clyvo/oracle:local` e `clyvo/petcare:local`.
-3. Sobe `clyvo-oracle` em `-d` com o volume montado em `/opt/oracle/oradata`.
-4. Espera o healthcheck do Oracle ficar `healthy` (~2 min no 1º boot).
-5. Sobe `clyvo-petcare` em `-d`, ligado ao mesmo network, **sem privilégios de root**
-   (USER `clyvo` declarado no Dockerfile).
+1. Cria network `clyvo-net` e volume `clyvo-oracle-data` (idempotente)
+2. Builda `clyvo/oracle:local` e `clyvo/petcare:local`
+3. Sobe `clyvo-oracle` em `-d` com `--shm-size=2g` e volume montado
+4. Espera Oracle ficar healthy (~2 min no 1º boot)
+5. Sobe `clyvo-petcare` em `-d` na mesma network, sem privilégios de root
 
 ### Testar (CRUD real no Oracle)
 
 ```bash
-# 1) listar (vem com 3 seeds do init SQL)
+# listar (o DataSeeder coloca 5 pets toda vez que o app sobe)
 curl http://localhost:8080/api/pets
 
-# 2) inserir
+# inserir
 curl -X POST http://localhost:8080/api/pets \
      -H 'Content-Type: application/json' \
      -d '{"name":"Thor","species":"dog","breed":"Husky","age":3,"ownerName":"Carla"}'
 
-# 3) ler pelo id
-curl http://localhost:8080/api/pets/4
+# ler por id
+curl http://localhost:8080/api/pets/1
 
-# 4) atualizar
-curl -X PUT http://localhost:8080/api/pets/4 \
+# atualizar
+curl -X PUT http://localhost:8080/api/pets/1 \
      -H 'Content-Type: application/json' \
-     -d '{"name":"Thor","species":"dog","breed":"Husky","age":4,"ownerName":"Carla"}'
+     -d '{"name":"Rex","species":"dog","breed":"Labrador","age":5,"ownerName":"Maria"}'
 
-# 5) deletar
-curl -X DELETE http://localhost:8080/api/pets/4
+# deletar
+curl -X DELETE http://localhost:8080/api/pets/1
 ```
 
-Provando que persiste no Oracle (não em memória), entre na VM do banco:
+### Inspecionar o banco direto
 
 ```bash
 docker exec -it clyvo-oracle sqlplus clyvo/clyvo123@//localhost:1521/XEPDB1
 ```
 
-Por padrão o sqlplus quebra cada coluna em uma linha (ilegível no terminal
-estreito do Windows). Cole o snippet abaixo logo após conectar pra ver as
-linhas formatadas em grid:
+Por padrão o sqlplus quebra cada coluna numa linha. Cole esse snippet pra ver
+em grid:
 
 ```sql
 SET LINESIZE 200
@@ -153,7 +188,7 @@ COL OWNER_NAME FORMAT A18
 SELECT * FROM PETS;
 ```
 
-Saída esperada (depois do seed automático do `DataSeeder`):
+Saída esperada (depois do seed automático):
 
 ```
   ID NAME         SPECIES  BREED         AGE OWNER_NAME
@@ -165,128 +200,110 @@ Saída esperada (depois do seed automático do `DataSeeder`):
    5 Luna         cat      Persian         1 Pedro Rocha
 ```
 
-> Pra UI mais confortável (grid, edição inline, autocomplete), use o
-> **DBeaver Community** — basta apontar pra `localhost:1521`, service name
-> `XEPDB1`, usuário `clyvo` / `clyvo123`.
+Pra UI mais confortável: **DBeaver Community** → host `localhost`, port `1521`,
+service name `XEPDB1`, user `clyvo`, password `clyvo123`.
 
 ### Parar / limpar
 
 ```bash
-./scripts/stop-local.sh           # para containers, mantém volume (dados)
-./scripts/stop-local.sh --purge   # para containers E apaga volume + network
+./scripts/stop-local.sh           # para containers, mantém volume
+./scripts/stop-local.sh --purge   # para tudo e apaga volume + network
 ```
-
-> **Nota sobre erro `input/output error` no Docker Desktop:** se aparecer
-> `write /var/lib/desktop-containerd/...meta.db: input/output error` na hora de
-> buildar, é o backend containerd do Docker Desktop em estado ruim — não é o
-> Dockerfile. Reinicie o Docker Desktop (ícone na bandeja → *Restart*) e
-> rode o script de novo. Verifiquei a imagem da app construindo com sucesso
-> (`uid=999(clyvo)`, jar de 52 MB no lugar correto).
 
 ---
 
-## 5. Deploy no Azure
+## Deploy no Azure
 
-**Pré-requisitos:** `az` CLI instalado e logado (`az login`) numa assinatura
-com permissão de criar Resource Group + VM.
+**Pré-req:** `az` CLI instalado e logado (`az login`). Funciona em qualquer
+assinatura com permissão de criar RG + VM (testado em Azure for Students).
 
-```bash
-# (opcional) ajustar defaults via env vars:
-export RG_NAME=rg-clyvo-vet
-export LOCATION=brazilsouth
-export VM_SIZE=Standard_B2s
-export REPO_URL=https://github.com/seu-usuario/clyvo-vet-petcare.git
+```powershell
+$env:REPO_URL = "https://github.com/MikW02/clyvo-vet-petcare.git"
+$env:ORACLE_PASSWORD = "SenhaForteOracle2026!"
+$env:APP_USER_PASSWORD = "SenhaForteApp2026!"
+$env:LOCATION = "brazilsouth"
 
-chmod +x scripts/azure-deploy.sh
-./scripts/azure-deploy.sh
+bash scripts/azure-deploy.sh
 ```
 
-O que o script faz, de cabo a rabo:
+O que o script faz:
 
-1. Cria o resource group `rg-clyvo-vet`.
-2. Cria a VM Ubuntu 22.04 (`Standard_B2s`) com **cloud-init** que já instala
-   `docker-ce`, `git`, `nano`, `curl`, `jq` e adiciona o admin user ao grupo
-   `docker`.
-3. Cria regras de NSG abrindo **8080** (app) e **1521** (Oracle). SSH já vem
-   aberto pelo `az vm create`.
-4. Espera o cloud-init terminar (`cloud-init status --wait`).
-5. Via `az vm run-command`: clona o repo na VM, builda as duas imagens, sobe
-   `clyvo-oracle` + `clyvo-petcare` em `-d`, conectados pela `clyvo-net`, com
-   o volume nomeado `clyvo-oracle-data` persistindo o banco.
+1. Cria resource group `rg-clyvo-vet`
+2. Cria VM Ubuntu 22.04 (`Standard_B2s`) com cloud-init que instala
+   `docker-ce`, `git`, `nano`, `curl`, `jq` e bota o admin user no grupo `docker`
+3. Cria regras NSG: `8080` aberta pro mundo (app), `1521` aberta **só pro IP de quem rodou o deploy** (Oracle)
+4. Espera cloud-init terminar (`cloud-init status --wait`)
+5. Via `az vm run-command`: clona repo na VM, builda as 2 imagens, sobe `clyvo-oracle` (com `--shm-size=2g`), espera healthy, sobe `clyvo-petcare`, espera responder em `/api/pets`
+6. Imprime IP público + comandos `curl` de exemplo
 
-No fim ele imprime o IP público e exemplos de `curl` para testar **de fora**
-da VM:
+### Testes externos
+
+Quando o deploy termina, ele dá o IP público. Do **seu computador** (fora da VM):
 
 ```bash
+# Lista os 5 pets seed
 curl http://<PUBLIC_IP>:8080/api/pets
 
+# Cria um novo
 curl -X POST http://<PUBLIC_IP>:8080/api/pets \
      -H 'Content-Type: application/json' \
      -d '{"name":"Luna","species":"cat","breed":"Persa","age":2,"ownerName":"Pedro"}'
+
+# Abre o Swagger no navegador
+start http://<PUBLIC_IP>:8080/swagger-ui.html
 ```
 
-### Variáveis suportadas pelo deploy
+Screenshots de comprovação em `docs/screenshots/` (subir depois do primeiro deploy).
 
-| Variável             | Default                | O que é                              |
-|----------------------|------------------------|--------------------------------------|
-| `RG_NAME`            | `rg-clyvo-vet`         | Resource Group                       |
-| `LOCATION`           | `brazilsouth`          | Região Azure                         |
-| `VM_NAME`            | `vm-clyvo-vet`         | Nome da VM                           |
-| `VM_SIZE`            | `Standard_B2s`         | SKU                                  |
-| `ADMIN_USER`         | `clyvoadmin`           | Usuário Linux                        |
-| `APP_PORT`           | `8080`                 | Porta exposta da API                 |
-| `DB_PORT`            | `1521`                 | Porta exposta do Oracle              |
-| `ORACLE_PASSWORD`    | `oracle123`            | Senha do `SYSTEM`                    |
-| `APP_USER`           | `clyvo`                | Schema/usuário da aplicação          |
-| `APP_USER_PASSWORD`  | `clyvo123`             | Senha do schema                      |
-| `REPO_URL`           | placeholder            | Repo Git que a VM vai clonar         |
+### Variáveis suportadas
 
-> **Importante:** as senhas default são para fins de demonstração. Em produção,
-> sobrescreva tudo via env vars antes de rodar.
+| Variável             | Default                | O que é                                  |
+|----------------------|------------------------|------------------------------------------|
+| `RG_NAME`            | `rg-clyvo-vet`         | Resource Group                           |
+| `LOCATION`           | `brazilsouth`          | Região Azure                             |
+| `VM_NAME`            | `vm-clyvo-vet`         | Nome da VM                               |
+| `VM_SIZE`            | `Standard_B2s`         | SKU (2 vCPU, 4 GB)                       |
+| `ADMIN_USER`         | `clyvoadmin`           | Usuário Linux                            |
+| `APP_PORT`           | `8080`                 | Porta exposta da API                     |
+| `DB_PORT`            | `1521`                 | Porta exposta do Oracle                  |
+| `ORACLE_PASSWORD`    | `oracle123`            | Senha do `SYSTEM`                        |
+| `APP_USER`           | `clyvo`                | Schema da aplicação                      |
+| `APP_USER_PASSWORD`  | `clyvo123`             | Senha do schema                          |
+| `REPO_URL`           | placeholder            | Repo Git que a VM vai clonar             |
+| `OPEN_DB`            | (vazio)                | `all` libera 1521 pro mundo; default = só seu IP |
+
+> **Importante:** as senhas default são pra demo. Em prod, override tudo via env.
 
 ---
 
-## 6. Limpeza — DELETAR a VM Azure
+## Limpar Azure
 
-Para apagar **tudo** que foi criado (VM, disco, NIC, IP público, NSG,
-resource group):
+Apaga **tudo** (VM, disco, NIC, IP, NSG, RG):
 
 ```bash
 ./scripts/azure-destroy.sh
 ```
 
-ou, manualmente, em um único comando:
+ou direto:
 
 ```bash
 az group delete --name rg-clyvo-vet --yes --no-wait
-```
-
-Para confirmar que sumiu:
-
-```bash
 az group exists --name rg-clyvo-vet   # deve retornar "false"
-```
-
-Para limpar a stack local sem mexer no Azure:
-
-```bash
-./scripts/stop-local.sh --purge
-docker image rm clyvo/petcare:local clyvo/oracle:local
 ```
 
 ---
 
-## 7. Configuração da aplicação
+## Configuração da aplicação
 
-Tudo é via env var (12-factor). Defaults em `application.properties`:
+12-factor via env (defaults em `application.properties`):
 
-| Env             | Default                                                     |
-|-----------------|-------------------------------------------------------------|
-| `SERVER_PORT`   | `8080`                                                      |
-| `DB_URL`        | `jdbc:oracle:thin:@localhost:1521/XEPDB1`                 |
-| `DB_USER`       | `clyvo`                                                     |
-| `DB_PASSWORD`   | `clyvo123`                                                  |
+| Env             | Default                                          |
+|-----------------|--------------------------------------------------|
+| `SERVER_PORT`   | `8080`                                           |
+| `DB_URL`        | `jdbc:oracle:thin:@localhost:1521/XEPDB1`        |
+| `DB_USER`       | `clyvo`                                          |
+| `DB_PASSWORD`   | `clyvo123`                                       |
 
-O Hibernate roda com `ddl-auto=update`, então a tabela `PETS` é criada
-automaticamente no 1º start. O `oracle/init/01_schema.sql` ainda cria a tabela
-de forma idempotente e popula 3 pets de exemplo na 1ª subida do banco.
+`spring.jpa.hibernate.ddl-auto=update` → a tabela `PETS` é criada no 1º start
+do app. Em todo restart, o `DataSeeder` (`config/DataSeeder.java`) limpa e
+re-popula com 5 pets fixos pra UI ficar previsível em demos.
