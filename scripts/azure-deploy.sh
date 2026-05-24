@@ -96,9 +96,15 @@ az network nsg rule create \
     --destination-port-ranges "$APP_PORT" --access Allow --protocol Tcp \
     --output none
 
+# Oracle só pra meu IP (sem expor 1521 pra internet inteira).
+# Se quiser desabilitar, passa OPEN_DB=all.
+MY_IP="${MY_IP:-$(curl -fsSL ifconfig.me 2>/dev/null || echo 0.0.0.0/0)}"
+DB_SRC="${DB_SRC:-$MY_IP/32}"
+[ "${OPEN_DB:-}" = "all" ] && DB_SRC="0.0.0.0/0"
 az network nsg rule create \
     --resource-group "$RG_NAME" --nsg-name "$NSG_NAME" \
     --name allow-oracle --priority 1020 \
+    --source-address-prefixes "$DB_SRC" \
     --destination-port-ranges "$DB_PORT" --access Allow --protocol Tcp \
     --output none
 
@@ -149,6 +155,19 @@ sudo -u ${ADMIN_USER} bash -lc '
         -e DB_USER=${APP_USER} \
         -e DB_PASSWORD=${APP_USER_PASSWORD} \
         clyvo/petcare:local
+
+    echo "Aguardando app responder em :8080..."
+    for i in {1..60}; do
+        if curl -fsS http://localhost:${APP_PORT}/api/pets >/dev/null 2>&1; then
+            echo "App OK"; break
+        fi
+        if [ \$i -eq 60 ]; then
+            echo "App nao subiu, ultimas linhas do log:"
+            docker logs --tail 50 clyvo-petcare
+            exit 1
+        fi
+        sleep 5
+    done
 '
 EOF
 )
