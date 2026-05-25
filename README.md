@@ -6,13 +6,31 @@ com script Azure CLI que provisiona VM Linux e sobe a stack remota.
 
 Repo: <https://github.com/MikW02/clyvo-vet-petcare>
 
+## TL;DR — como rodar
+
+```bash
+git clone https://github.com/MikW02/clyvo-vet-petcare.git
+cd clyvo-vet-petcare
+
+# local (precisa Docker Desktop):
+bash scripts/run-local.sh        # Linux/Mac/Git Bash
+# ou:
+powershell -ExecutionPolicy Bypass -File scripts/run-local.ps1
+
+# Azure (precisa az login):
+bash scripts/azure-deploy.sh
+```
+
+Todas as credenciais e configurações ficam em `.env` na raiz (já vem versionado
+com senhas de demonstração). Edita lá se quiser mudar.
+
+API depois de subir: <http://localhost:8080/swagger-ui.html>
+
 ---
 
 ## Arquitetura
 
 ![Arquitetura](docs/arquitetura.png)
-
-Fonte editável: `docs/arquitetura.drawio` (abre em <https://app.diagrams.net>).
 
 Fluxo:
 
@@ -44,7 +62,7 @@ Usuário ──HTTP:8080──▶ Public IP ─▶ NSG ─▶ VM Linux (Ubuntu 2
 | ↳ Usuário sem ser root                          |     | `app/Dockerfile`: `groupadd --system clyvo` + `USER clyvo`                 |
 | ↳ Volume nomeado                                |     | `-v clyvo-oracle-data:/opt/oracle/oradata` no run do Oracle                |
 | ↳ Testar externamente (fora da VM)              |     | seção [Testes externos](#testes-externos) abaixo + screenshots em `docs/`  |
-| **Arquitetura draw.io**                         | 20  | `docs/arquitetura.drawio` + PNG renderizado `docs/arquitetura.png`         |
+| **Arquitetura draw.io**                         | 20  | `docs/arquitetura.png` (renderizado a partir de fonte draw.io)             |
 
 ---
 
@@ -72,7 +90,6 @@ challenge052026/
 │   ├── azure-deploy.sh               # provisiona VM + sobe containers
 │   └── azure-destroy.sh              # apaga TUDO no Azure
 ├── docs/
-│   ├── arquitetura.drawio
 │   └── arquitetura.png
 └── README.md
 ```
@@ -122,18 +139,20 @@ Significado dos status codes:
 
 **Pré-req:** Docker Desktop rodando, ~4 GB RAM livres.
 
-### 0. Senhas (obrigatório antes de subir)
+### 0. Senhas e configuração
 
-Os scripts e a app **não trazem senhas default no código** (regra do challenge).
-Copie o template e edite com senhas suas:
+Tudo (senhas, REPO_URL, região Azure) está em `.env` na raiz, lido
+automaticamente pelos scripts. As senhas atuais são de demonstração — troque
+em `.env` antes de qualquer uso real:
 
-```bash
-cp .env.sample .env
-# edita .env — ORACLE_PASSWORD, APP_USER_PASSWORD, DB_PASSWORD
+```env
+ORACLE_PASSWORD=FiapClyvo
+APP_USER=clyvo
+APP_USER_PASSWORD=FiapClyvo
+DB_PASSWORD=FiapClyvo
+REPO_URL=https://github.com/MikW02/clyvo-vet-petcare.git
+LOCATION=eastus
 ```
-
-`.env` é ignorado pelo git (`.gitignore`). Os scripts `run-local.*` e
-`azure-deploy.sh` carregam ele automaticamente.
 
 ### Linux / macOS / WSL
 
@@ -231,12 +250,12 @@ service name `XEPDB1`, user `clyvo`, password = a que você definiu em `.env`.
 assinatura com permissão de criar RG + VM (testado em Azure for Students).
 
 ```powershell
-# garanta que .env existe com ORACLE_PASSWORD e APP_USER_PASSWORD
-$env:REPO_URL = "https://github.com/MikW02/clyvo-vet-petcare.git"
-$env:LOCATION = "brazilsouth"
-
+cd C:\caminho\pro\repo
 bash scripts/azure-deploy.sh
 ```
+
+> O script lê `.env` automaticamente. Pra override pontual:
+> `$env:LOCATION = "westus2"; bash scripts/azure-deploy.sh`
 
 > O script carrega `.env` automaticamente; se precisar override, exporte
 > antes (`$env:ORACLE_PASSWORD = "..."`).
