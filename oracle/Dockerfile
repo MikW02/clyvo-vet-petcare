@@ -5,10 +5,12 @@
 
 FROM gvenzl/oracle-xe:21-slim-faststart
 
-# Default credentials (override at `docker run` time with -e).
-ENV ORACLE_PASSWORD=oracle123 \
-    APP_USER=clyvo \
-    APP_USER_PASSWORD=clyvo123
+# Credentials são obrigatórias e devem ser passadas com `-e` no `docker run`.
+# Não definimos defaults aqui pra evitar senha hardcoded no repo.
+# Variáveis esperadas:
+#   ORACLE_PASSWORD       senha do usuário SYSTEM
+#   APP_USER              schema da aplicação (ex.: clyvo)
+#   APP_USER_PASSWORD     senha do schema
 
 # Anything placed in /container-entrypoint-initdb.d runs once, the first time
 # the named volume mounted at /opt/oracle/oradata is empty.

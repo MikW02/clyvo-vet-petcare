@@ -122,6 +122,19 @@ Significado dos status codes:
 
 **Pré-req:** Docker Desktop rodando, ~4 GB RAM livres.
 
+### 0. Senhas (obrigatório antes de subir)
+
+Os scripts e a app **não trazem senhas default no código** (regra do challenge).
+Copie o template e edite com senhas suas:
+
+```bash
+cp .env.sample .env.local
+# edita .env.local — ORACLE_PASSWORD, APP_USER_PASSWORD, DB_PASSWORD
+```
+
+`.env.local` é ignorado pelo git (`.gitignore`). Os scripts `run-local.*` e
+`azure-deploy.sh` carregam ele automaticamente.
+
 ### Linux / macOS / WSL
 
 ```bash
@@ -169,7 +182,7 @@ curl -X DELETE http://localhost:8080/api/pets/1
 ### Inspecionar o banco direto
 
 ```bash
-docker exec -it clyvo-oracle sqlplus clyvo/clyvo123@//localhost:1521/XEPDB1
+docker exec -it clyvo-oracle sqlplus clyvo/$APP_USER_PASSWORD@//localhost:1521/XEPDB1
 ```
 
 Por padrão o sqlplus quebra cada coluna numa linha. Cole esse snippet pra ver
@@ -201,7 +214,7 @@ Saída esperada (depois do seed automático):
 ```
 
 Pra UI mais confortável: **DBeaver Community** → host `localhost`, port `1521`,
-service name `XEPDB1`, user `clyvo`, password `clyvo123`.
+service name `XEPDB1`, user `clyvo`, password = a que você definiu em `.env.local`.
 
 ### Parar / limpar
 
@@ -218,13 +231,15 @@ service name `XEPDB1`, user `clyvo`, password `clyvo123`.
 assinatura com permissão de criar RG + VM (testado em Azure for Students).
 
 ```powershell
+# garanta que .env.local existe com ORACLE_PASSWORD e APP_USER_PASSWORD
 $env:REPO_URL = "https://github.com/MikW02/clyvo-vet-petcare.git"
-$env:ORACLE_PASSWORD = "SenhaForteOracle2026!"
-$env:APP_USER_PASSWORD = "SenhaForteApp2026!"
 $env:LOCATION = "brazilsouth"
 
 bash scripts/azure-deploy.sh
 ```
+
+> O script carrega `.env.local` automaticamente; se precisar override, exporte
+> antes (`$env:ORACLE_PASSWORD = "..."`).
 
 O que o script faz:
 
@@ -266,13 +281,13 @@ Screenshots de comprovação em `docs/screenshots/` (subir depois do primeiro de
 | `ADMIN_USER`         | `clyvoadmin`           | Usuário Linux                            |
 | `APP_PORT`           | `8080`                 | Porta exposta da API                     |
 | `DB_PORT`            | `1521`                 | Porta exposta do Oracle                  |
-| `ORACLE_PASSWORD`    | `oracle123`            | Senha do `SYSTEM`                        |
+| `ORACLE_PASSWORD`    | _(obrigatório)_        | Senha do `SYSTEM` no Oracle              |
 | `APP_USER`           | `clyvo`                | Schema da aplicação                      |
-| `APP_USER_PASSWORD`  | `clyvo123`             | Senha do schema                          |
+| `APP_USER_PASSWORD`  | _(obrigatório)_        | Senha do schema                          |
 | `REPO_URL`           | placeholder            | Repo Git que a VM vai clonar             |
 | `OPEN_DB`            | (vazio)                | `all` libera 1521 pro mundo; default = só seu IP |
 
-> **Importante:** as senhas default são pra demo. Em prod, override tudo via env.
+> **Senhas são obrigatórias** e nunca têm default no código. Defina em `.env.local` (ou exporte como env var antes de rodar). Nada vai pro git.
 
 ---
 
@@ -302,7 +317,7 @@ az group exists --name rg-clyvo-vet   # deve retornar "false"
 | `SERVER_PORT`   | `8080`                                           |
 | `DB_URL`        | `jdbc:oracle:thin:@localhost:1521/XEPDB1`        |
 | `DB_USER`       | `clyvo`                                          |
-| `DB_PASSWORD`   | `clyvo123`                                       |
+| `DB_PASSWORD`   | _(obrigatório, sem default)_                     |
 
 `spring.jpa.hibernate.ddl-auto=update` → a tabela `PETS` é criada no 1º start
 do app. Em todo restart, o `DataSeeder` (`config/DataSeeder.java`) limpa e

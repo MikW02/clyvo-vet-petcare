@@ -9,9 +9,14 @@ VOLUME="clyvo-oracle-data"
 DB_CONTAINER="clyvo-oracle"
 APP_CONTAINER="clyvo-petcare"
 
-ORACLE_PASSWORD="${ORACLE_PASSWORD:-oracle123}"
+# Carrega .env.local se existir (ignorado pelo git) — copie de .env.sample
+if [ -f "$(dirname "$0")/../.env.local" ]; then
+    set -a; . "$(dirname "$0")/../.env.local"; set +a
+fi
+
+: "${ORACLE_PASSWORD:?defina ORACLE_PASSWORD (ex.: copie .env.sample para .env.local e edite)}"
+: "${APP_USER_PASSWORD:?defina APP_USER_PASSWORD}"
 APP_USER="${APP_USER:-clyvo}"
-APP_USER_PASSWORD="${APP_USER_PASSWORD:-clyvo123}"
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 

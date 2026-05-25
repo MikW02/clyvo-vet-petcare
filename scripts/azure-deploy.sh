@@ -32,9 +32,13 @@ APP_PORT="${APP_PORT:-8080}"
 DB_PORT="${DB_PORT:-1521}"
 NSG_NAME="${NSG_NAME:-${VM_NAME}NSG}"
 
-ORACLE_PASSWORD="${ORACLE_PASSWORD:-oracle123}"
+# Carrega .env.local se existir (ignorado pelo git)
+if [ -f "$(dirname "$0")/../.env.local" ]; then
+    set -a; . "$(dirname "$0")/../.env.local"; set +a
+fi
+: "${ORACLE_PASSWORD:?defina ORACLE_PASSWORD antes de rodar o deploy}"
+: "${APP_USER_PASSWORD:?defina APP_USER_PASSWORD antes de rodar o deploy}"
 APP_USER="${APP_USER:-clyvo}"
-APP_USER_PASSWORD="${APP_USER_PASSWORD:-clyvo123}"
 
 REPO_URL="${REPO_URL:-https://github.com/your-org/clyvo-vet-petcare.git}"
 

@@ -8,9 +8,20 @@ $Volume       = 'clyvo-oracle-data'
 $DbContainer  = 'clyvo-oracle'
 $AppContainer = 'clyvo-petcare'
 
-$OraclePassword     = if ($env:ORACLE_PASSWORD)     { $env:ORACLE_PASSWORD }     else { 'oracle123' }
-$AppUser            = if ($env:APP_USER)            { $env:APP_USER }            else { 'clyvo' }
-$AppUserPassword    = if ($env:APP_USER_PASSWORD)   { $env:APP_USER_PASSWORD }   else { 'clyvo123' }
+# Carrega .env.local se existir (ignorado pelo git) — copie de .env.sample
+$EnvFile = Join-Path (Split-Path -Parent $PSScriptRoot) '.env.local'
+if (Test-Path $EnvFile) {
+    Get-Content $EnvFile | Where-Object { $_ -match '^[^#].+=' } | ForEach-Object {
+        $k,$v = $_ -split '=',2
+        Set-Item "env:$($k.Trim())" $v.Trim()
+    }
+}
+
+if (-not $env:ORACLE_PASSWORD)    { throw 'Defina ORACLE_PASSWORD (copie .env.sample para .env.local e edite)' }
+if (-not $env:APP_USER_PASSWORD)  { throw 'Defina APP_USER_PASSWORD' }
+$OraclePassword     = $env:ORACLE_PASSWORD
+$AppUser            = if ($env:APP_USER) { $env:APP_USER } else { 'clyvo' }
+$AppUserPassword    = $env:APP_USER_PASSWORD
 
 $RootDir = Split-Path -Parent $PSScriptRoot
 if (-not $RootDir) { $RootDir = Resolve-Path (Join-Path $PSScriptRoot '..') }
