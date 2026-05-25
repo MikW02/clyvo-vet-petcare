@@ -32,9 +32,9 @@ APP_PORT="${APP_PORT:-8080}"
 DB_PORT="${DB_PORT:-1521}"
 NSG_NAME="${NSG_NAME:-${VM_NAME}NSG}"
 
-# Carrega .env.local se existir (ignorado pelo git)
-if [ -f "$(dirname "$0")/../.env.local" ]; then
-    set -a; . "$(dirname "$0")/../.env.local"; set +a
+# Carrega .env se existir (ignorado pelo git)
+if [ -f "$(dirname "$0")/../.env" ]; then
+    set -a; . "$(dirname "$0")/../.env"; set +a
 fi
 : "${ORACLE_PASSWORD:?defina ORACLE_PASSWORD antes de rodar o deploy}"
 : "${APP_USER_PASSWORD:?defina APP_USER_PASSWORD antes de rodar o deploy}"

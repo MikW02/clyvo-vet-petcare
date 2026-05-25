@@ -128,11 +128,11 @@ Os scripts e a app **não trazem senhas default no código** (regra do challenge
 Copie o template e edite com senhas suas:
 
 ```bash
-cp .env.sample .env.local
-# edita .env.local — ORACLE_PASSWORD, APP_USER_PASSWORD, DB_PASSWORD
+cp .env.sample .env
+# edita .env — ORACLE_PASSWORD, APP_USER_PASSWORD, DB_PASSWORD
 ```
 
-`.env.local` é ignorado pelo git (`.gitignore`). Os scripts `run-local.*` e
+`.env` é ignorado pelo git (`.gitignore`). Os scripts `run-local.*` e
 `azure-deploy.sh` carregam ele automaticamente.
 
 ### Linux / macOS / WSL
@@ -214,7 +214,7 @@ Saída esperada (depois do seed automático):
 ```
 
 Pra UI mais confortável: **DBeaver Community** → host `localhost`, port `1521`,
-service name `XEPDB1`, user `clyvo`, password = a que você definiu em `.env.local`.
+service name `XEPDB1`, user `clyvo`, password = a que você definiu em `.env`.
 
 ### Parar / limpar
 
@@ -231,14 +231,14 @@ service name `XEPDB1`, user `clyvo`, password = a que você definiu em `.env.loc
 assinatura com permissão de criar RG + VM (testado em Azure for Students).
 
 ```powershell
-# garanta que .env.local existe com ORACLE_PASSWORD e APP_USER_PASSWORD
+# garanta que .env existe com ORACLE_PASSWORD e APP_USER_PASSWORD
 $env:REPO_URL = "https://github.com/MikW02/clyvo-vet-petcare.git"
 $env:LOCATION = "brazilsouth"
 
 bash scripts/azure-deploy.sh
 ```
 
-> O script carrega `.env.local` automaticamente; se precisar override, exporte
+> O script carrega `.env` automaticamente; se precisar override, exporte
 > antes (`$env:ORACLE_PASSWORD = "..."`).
 
 O que o script faz:
@@ -287,7 +287,7 @@ Screenshots de comprovação em `docs/screenshots/` (subir depois do primeiro de
 | `REPO_URL`           | placeholder            | Repo Git que a VM vai clonar             |
 | `OPEN_DB`            | (vazio)                | `all` libera 1521 pro mundo; default = só seu IP |
 
-> **Senhas são obrigatórias** e nunca têm default no código. Defina em `.env.local` (ou exporte como env var antes de rodar). Nada vai pro git.
+> **Senhas são obrigatórias** e nunca têm default no código. Defina em `.env` (ou exporte como env var antes de rodar). Nada vai pro git.
 
 ---
 

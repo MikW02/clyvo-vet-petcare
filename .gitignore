@@ -5,5 +5,5 @@ target/
 .DS_Store
 *.log
 .claude/
-.env.local
+.env
 *.env

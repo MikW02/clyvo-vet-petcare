@@ -8,8 +8,8 @@ $Volume       = 'clyvo-oracle-data'
 $DbContainer  = 'clyvo-oracle'
 $AppContainer = 'clyvo-petcare'
 
-# Carrega .env.local se existir (ignorado pelo git) — copie de .env.sample
-$EnvFile = Join-Path (Split-Path -Parent $PSScriptRoot) '.env.local'
+# Carrega .env se existir (ignorado pelo git) — copie de .env.sample
+$EnvFile = Join-Path (Split-Path -Parent $PSScriptRoot) '.env'
 if (Test-Path $EnvFile) {
     Get-Content $EnvFile | Where-Object { $_ -match '^[^#].+=' } | ForEach-Object {
         $k,$v = $_ -split '=',2
@@ -17,7 +17,7 @@ if (Test-Path $EnvFile) {
     }
 }
 
-if (-not $env:ORACLE_PASSWORD)    { throw 'Defina ORACLE_PASSWORD (copie .env.sample para .env.local e edite)' }
+if (-not $env:ORACLE_PASSWORD)    { throw 'Defina ORACLE_PASSWORD (copie .env.sample para .env e edite)' }
 if (-not $env:APP_USER_PASSWORD)  { throw 'Defina APP_USER_PASSWORD' }
 $OraclePassword     = $env:ORACLE_PASSWORD
 $AppUser            = if ($env:APP_USER) { $env:APP_USER } else { 'clyvo' }
